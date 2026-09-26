@@ -323,27 +323,31 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         return;
       }
 
-      // 2. Free 24h Key -> Sends Ephemeral Checkpoint Link
+      // 2. Free 24h Key -> Sends Ephemeral Checkpoint Link bound to Discord ID
       if (btnId === "btn_free") {
         const freeEmbed = new EmbedBuilder()
           .setColor(0x10b981)
-          .setTitle(isKm ? "🆓 Key ឥតគិតថ្លៃ 24 ម៉ោង" : "🆓 Free 24-Hour Key")
+          .setTitle(isKm ? "🆓 Key ឥតគិតថ្លៃ 24 ម៉ោង (Free 24h Key)" : "🆓 Free 24-Hour Key (1-Time Claim)")
           .setDescription(
             isKm
-              ? `ទទួលបាន key ឥតគិតថ្លៃ 24 ម៉ោង ដោយបំពេញ 3 ជំហានរហ័ស:\n\n` +
+              ? `ទទួលបាន Voucher key ឥតគិតថ្លៃ 24 ម៉ោង ដោយបំពេញ 3 ជំហានរហ័ស:\n\n` +
                   `👉 **បើកទំព័រ Checkpoint Generator:**\n` +
-                  `https://chiro-license-center.onrender.com/free-key\n\n` +
-                  `1. បើក link ខាងលើ\n` +
-                  `2. បំពេញ 3 ជំហាន (រង់ចាំ 15 វិនាទីនីមួយៗ)\n` +
-                  `3. Copy key យកទៅប្រើភ្លាមៗ!`
-              : `Generate a free 24-hour key by completing 3 quick checkpoints:\n\n` +
-                  `👉 **Checkpoint Generator:**\n` +
-                  `https://chiro-license-center.onrender.com/free-key\n\n` +
-                  `1. Open the page above\n` +
-                  `2. Complete 3 steps (15s wait each)\n` +
-                  `3. Receive your free license key instantly!`
+                  `https://chiro-license-center.onrender.com/free-key?discordId=${userId}\n\n` +
+                  `1. បើក link ខាងលើ (ភ្ជាប់ជាមួយគណនី Discord របស់អ្នកស្វ័យប្រវត្តិ)\n` +
+                  `2. បំពេញ 3 ជំហាន (រង់ចាំ 15 វិនាទី)\n` +
+                  `3. Copy **Voucher Code** (\`CHIRO-XXXX-XXXX-XXXX\`)\n` +
+                  `4. ត្រឡប់មកទីនេះ ចុចប៊ូតុង **🎟️ Redeem Code** ដើម្បីប្ដូរយក Roblox key & ទទួល **@Premium** role!\n\n` +
+                  `⚠️ *កំណត់សម្គាល់: គណនី Discord នីមួយៗអាចទទួល key ឥតគិតថ្លៃបានតែ 1 ដងប៉ុណ្ណោះ។*`
+              : `Generate a free 24-hour voucher key by completing 3 quick checkpoints:\n\n` +
+                  `👉 **Checkpoint Generator Link:**\n` +
+                  `https://chiro-license-center.onrender.com/free-key?discordId=${userId}\n\n` +
+                  `1. Open the link above (auto-bound to your Discord ID)\n` +
+                  `2. Complete 3 steps (wait 15s each)\n` +
+                  `3. Copy your **Voucher Code** (\`CHIRO-XXXX-XXXX-XXXX\`)\n` +
+                  `4. Return here, click **🎟️ Redeem Code** to claim your script key & get **@Premium** role!\n\n` +
+                  `⚠️ *Limit: Each Discord account can claim 1 free key only.*`
           )
-          .setFooter({ text: "Only visible to you" });
+          .setFooter({ text: "Only visible to you • 1 claim per account" });
 
         await interaction.reply({ embeds: [freeEmbed], ephemeral: true });
         return;
