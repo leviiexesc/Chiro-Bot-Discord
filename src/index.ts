@@ -642,7 +642,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
             `Execution script for key \`${selectedKey}\`:\n\n` +
               `\`\`\`lua\n` +
               `getgenv().Key = "${selectedKey}"\n` +
-              `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau"))()\n` +
+              `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_loader.lua"))()\n` +
               `\`\`\`\n` +
               `📋 *Tap the copy button on the code block above to copy directly into your executor!*`
           )
@@ -732,7 +732,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
                     `📋 **របៀប Execute ក្នុង Roblox:**\n` +
                     `\`\`\`lua\n` +
                     `getgenv().Key = "${data.key}"\n` +
-                    `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau"))()\n` +
+                    `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_loader.lua"))()\n` +
                     `\`\`\`\n` +
                     `⚠️ *សំខាន់:* សូមកត់ទុក key នេះ! Voucher ដើមត្រូវបានប្រើប្រាស់រួចហើយ។`
                 : `📦 **Product:** ${data.product?.name || "Chiro UI"}\n` +
@@ -743,7 +743,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
                     `📋 **How to execute in Roblox:**\n` +
                     `\`\`\`lua\n` +
                     `getgenv().Key = "${data.key}"\n` +
-                    `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau"))()\n` +
+                    `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_loader.lua"))()\n` +
                     `\`\`\`\n` +
                     `⚠️ *Important:* Save your key! Your original purchase voucher code is now consumed.`) +
                 roleGrantedText
