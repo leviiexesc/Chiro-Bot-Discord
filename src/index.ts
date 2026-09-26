@@ -58,6 +58,16 @@ const healthServer = http.createServer((req, res) => {
 healthServer.listen(PORT, () => {
   console.log(`🌐 Discord Bot Health server listening on port ${PORT}`);
 
+  // 24/7 Keep-Alive: Ping Chiro License Center every 8 minutes
+  setInterval(async () => {
+    try {
+      await fetch("https://chiro-license-center.onrender.com/api/v1/health");
+      console.log("💓 [Keep-Alive] Pinged Chiro License Center");
+    } catch {
+      // Ignore background errors
+    }
+  }, 8 * 60 * 1000);
+
   const SELF_URL = process.env.RENDER_EXTERNAL_URL
     ? `${process.env.RENDER_EXTERNAL_URL}/health`
     : `http://localhost:${PORT}/health`;
