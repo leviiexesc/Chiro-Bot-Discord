@@ -10,11 +10,12 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   SlashCommandBuilder,
   REST,
   Routes,
   Interaction,
-  GuildMember,
 } from "discord.js";
 
 dotenv.config();
@@ -57,7 +58,6 @@ const healthServer = http.createServer((req, res) => {
 healthServer.listen(PORT, () => {
   console.log(`🌐 Discord Bot Health server listening on port ${PORT}`);
 
-  // 14-minute self-ping to prevent Render Free Plan sleeping
   const SELF_URL = process.env.RENDER_EXTERNAL_URL
     ? `${process.env.RENDER_EXTERNAL_URL}/health`
     : `http://localhost:${PORT}/health`;
@@ -91,7 +91,7 @@ function getMemberCooldown(member: any): CooldownInfo {
   const roleList = member.roles?.cache ? Array.from(member.roles.cache.values()) : [];
   const roleNames = roleList.map((r: any) => (r.name || "").toLowerCase());
 
-  // 1. Chiro Hub (Role named "Chiro Hub", "ChiroHub", or "VIP"): No Cooldown (0 Hours)
+  // 1. Chiro Hub VIP (Role named "Chiro Hub", "ChiroHub", or "VIP"): No Cooldown (0 Hours)
   const isChiroHub = roleNames.some(
     (n: string) => n.includes("chiro hub") || n.includes("chirohub") || n === "vip"
   );
@@ -123,7 +123,6 @@ function getMemberCooldown(member: any): CooldownInfo {
 async function grantPremiumRole(guild: any, member: any): Promise<string | null> {
   if (!guild || !member) return null;
   try {
-    // Look for role named "Premium", "Buyer", or "Customer"
     let role = guild.roles.cache.find(
       (r: any) =>
         r.name.toLowerCase() === "premium" ||
@@ -131,7 +130,6 @@ async function grantPremiumRole(guild: any, member: any): Promise<string | null>
         r.name.toLowerCase() === "customer"
     );
 
-    // If not found, try to auto-create "Premium" role
     if (!role) {
       try {
         role = await guild.roles.create({
@@ -160,11 +158,7 @@ async function redeemVoucherApi(code: string, discordId?: string, discordTag?: s
     const res = await fetch(`${API_BASE}/redeem`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code,
-        discordId,
-        discordTag,
-      }),
+      body: JSON.stringify({ code, discordId, discordTag }),
     });
     return (await res.json()) as any;
   } catch (err: any) {
@@ -198,6 +192,15 @@ async function resetHwidApi(key: string, discordId?: string, cooldownHours?: num
   }
 }
 
+async function fetchMyKeysApi(discordId: string) {
+  try {
+    const res = await fetch(`${API_BASE}/my-keys?discordId=${discordId}`);
+    return (await res.json()) as any;
+  } catch {
+    return { success: false, data: [] };
+  }
+}
+
 // ── Member Panel Generator (Banana Hub Style) ─────────────────────────────────
 function buildMemberPanel(lang: "en" | "km" = "en") {
   const isKm = lang === "km";
@@ -207,12 +210,12 @@ function buildMemberPanel(lang: "en" | "km" = "en") {
     .setTitle(isKm ? "⚡ Chiro UI — ផ្ទាំងសមាជិក (Member Panel)" : "⚡ Chiro UI — Member Panel")
     .setDescription(
       isKm
-        ? `សូមស្វាគមន៍មកកាន់ **Chiro UI**!\n\nឧបករណ៍សម្រាប់សមាជិក។ ចុចលើប៊ូតុងខាងក្រោមដើម្បីប្រើប្រាស់:\n\n` +
+        ? `សូមស្វាគមន៍មកកាន់ **Chiro UI**!\n\nឧបករណ៍សម្រាប់សមាជិក។ ចុចលើប៊ូតុងខាងក្រោមដើម្បីជ្រើសរើស:\n\n` +
             `🎟️ **Redeem Code** — ប្ដូរ voucher យក whitelist key (ទទួលបាន role **@Premium** ស្វ័យប្រវត្តិ)\n` +
             `🆓 **Free 24h Key** — ទទួល link យក key ឥតគិតថ្លៃ 24 ម៉ោង\n` +
-            `🖥️ **Reset HWID** — ដោះចំណងឧបករណ៍សម្រាប់ key របស់អ្នក\n` +
-            `📜 **Get Script / Keys** — ទទួល code loader សម្រាប់ run ក្នុង Roblox\n` +
-            `📊 **My Keys Status** — ពិនិត្យស្ថានភាព key និងចំនួនឧបករណ៍\n` +
+            `🖥️ **Reset HWID** — បង្ហាញ dropdown ជ្រើសរើស key ដើម្បី Reset HWID\n` +
+            `📜 **Get Script / Keys** — បង្ហាញ dropdown ជ្រើសរើស key ដើម្បីទទួល Roblox loader\n` +
+            `📊 **My Keys Status** — បង្ហាញ dropdown ពិនិត្យស្ថានភាព key នីមួយៗ\n` +
             `🌐 **Language / ភាសា** — ប្ដូរភាសារវាង English និង ខ្មែរ\n\n` +
             `⏳ **កម្រិតកំណត់ Reset HWID Cooldown:**\n` +
             `• 🌟 **Chiro Hub:** គ្មាន Cooldown (Reset បានរហ័សគ្រប់ពេល)\n` +
@@ -222,9 +225,9 @@ function buildMemberPanel(lang: "en" | "km" = "en") {
         : `Welcome to **Chiro UI**!\n\nTools for members. Click the corresponding button to use it.\n\n` +
             `🎟️ **Redeem Code** — redeem voucher code (automatically grants **@Premium** role)\n` +
             `🆓 **Free 24h Key** — get a free 24-hour key checkpoint link\n` +
-            `🖥️ **Reset HWID** — reset HWID for your key\n` +
-            `📜 **Get Script / Keys** — get Roblox script loader and execution key\n` +
-            `📊 **My Keys Status** — view your key status & bound devices\n` +
+            `🖥️ **Reset HWID** — dropdown menu to select a key to reset HWID\n` +
+            `📜 **Get Script / Keys** — dropdown menu to choose key and get Roblox script\n` +
+            `📊 **My Keys Status** — dropdown menu to view status & devices of your keys\n` +
             `🌐 **Language / ភាសា** — switch language to Khmer or English\n\n` +
             `⏳ **HWID Reset Cooldown Tiers:**\n` +
             `• 🌟 **Chiro Hub:** No Cooldown (Instant Unlimited)\n` +
@@ -239,22 +242,22 @@ function buildMemberPanel(lang: "en" | "km" = "en") {
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("btn_redeem")
-      .setLabel(isKm ? "Redeem Code" : "Redeem Code")
+      .setLabel("Redeem Code")
       .setEmoji("🎟️")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("btn_free")
-      .setLabel(isKm ? "Free 24h Key" : "Free 24h Key")
+      .setLabel("Free 24h Key")
       .setEmoji("🆓")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId("btn_resethwid")
-      .setLabel(isKm ? "Reset HWID" : "Reset HWID")
+      .setLabel("Reset HWID")
       .setEmoji("🖥️")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("btn_script")
-      .setLabel(isKm ? "Get Script / Keys" : "Get Script / Keys")
+      .setLabel("Get Script / Keys")
       .setEmoji("📜")
       .setStyle(ButtonStyle.Secondary)
   );
@@ -263,7 +266,7 @@ function buildMemberPanel(lang: "en" | "km" = "en") {
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("btn_verify")
-      .setLabel(isKm ? "My Keys Status" : "My Keys Status")
+      .setLabel("My Keys Status")
       .setEmoji("📊")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
@@ -301,44 +304,6 @@ function createRedeemModal(lang: "en" | "km") {
   return modal;
 }
 
-function createResetHwidModal(lang: "en" | "km", cooldownTierName: string) {
-  const isKm = lang === "km";
-  const modal = new ModalBuilder()
-    .setCustomId("modal_resethwid")
-    .setTitle(isKm ? `Reset HWID (${cooldownTierName})` : `Reset HWID (${cooldownTierName})`);
-
-  const input = new TextInputBuilder()
-    .setCustomId("hwid_key_input")
-    .setLabel(isKm ? "Script Key របស់អ្នក (CHIRO_...):" : "Your Script Key (CHIRO_...):")
-    .setPlaceholder("CHIRO_7d672a9d2743ddd3b50c2710")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMinLength(15)
-    .setMaxLength(64);
-
-  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-  return modal;
-}
-
-function createVerifyModal(lang: "en" | "km") {
-  const isKm = lang === "km";
-  const modal = new ModalBuilder()
-    .setCustomId("modal_verify")
-    .setTitle(isKm ? "ពិនិត្យស្ថានភាព License Key" : "Verify License Key");
-
-  const input = new TextInputBuilder()
-    .setCustomId("verify_key_input")
-    .setLabel(isKm ? "Script Key របស់អ្នក:" : "Your Script Key:")
-    .setPlaceholder("CHIRO_7d672a9d2743ddd3b50c2710")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMinLength(15)
-    .setMaxLength(64);
-
-  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-  return modal;
-}
-
 // ── Discord Interaction Handler ───────────────────────────────────────────────
 client.on("interactionCreate", async (interaction: Interaction) => {
   try {
@@ -346,33 +311,22 @@ client.on("interactionCreate", async (interaction: Interaction) => {
     const lang = getLang(userId);
     const isKm = lang === "km";
 
-    // ── Button Interactions ──────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. BUTTON INTERACTIONS
+    // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isButton()) {
       const btnId = interaction.customId;
 
-      // 1. Redeem Button -> Show Modal
+      // 1. Redeem Code -> Opens Modal
       if (btnId === "btn_redeem") {
         await interaction.showModal(createRedeemModal(lang));
         return;
       }
 
-      // 2. Reset HWID Button -> Show Modal with user's cooldown tier
-      if (btnId === "btn_resethwid") {
-        const cooldown = getMemberCooldown(interaction.member);
-        await interaction.showModal(createResetHwidModal(lang, cooldown.roleName));
-        return;
-      }
-
-      // 3. Verify Button -> Show Modal
-      if (btnId === "btn_verify") {
-        await interaction.showModal(createVerifyModal(lang));
-        return;
-      }
-
-      // 4. Free Key Button -> Send Ephemeral Link
+      // 2. Free 24h Key -> Sends Ephemeral Checkpoint Link
       if (btnId === "btn_free") {
         const freeEmbed = new EmbedBuilder()
-          .setColor(0x10b981) // Green
+          .setColor(0x10b981)
           .setTitle(isKm ? "🆓 Key ឥតគិតថ្លៃ 24 ម៉ោង" : "🆓 Free 24-Hour Key")
           .setDescription(
             isKm
@@ -395,29 +349,154 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         return;
       }
 
-      // 5. Get Script / Loader
-      if (btnId === "btn_script") {
-        const scriptEmbed = new EmbedBuilder()
-          .setColor(0x3b82f6) // Blue
-          .setTitle(isKm ? "📜 Code Loader សម្រាប់ Roblox" : "📜 Roblox Execution Loader")
-          .setDescription(
-            isKm
-              ? `ដាក់កូដខាងក្រោមនេះនៅកំពូល executor របស់អ្នក:\n\n` +
-                  `\`\`\`lua\n` +
-                  `getgenv().Key = "CHIRO_YOUR_KEY_HERE"\n` +
-                  `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau"))()\n` +
-                  `\`\`\`\n` +
-                  `💡 *ចំណាំ:* ប្ដូរ \`CHIRO_YOUR_KEY_HERE\` ជាមួយ key ពិតប្រាកដរបស់អ្នក។`
-              : `Put this code at the very top of your Roblox script executor:\n\n` +
-                  `\`\`\`lua\n` +
-                  `getgenv().Key = "CHIRO_YOUR_KEY_HERE"\n` +
-                  `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau"))()\n` +
-                  `\`\`\`\n` +
-                  `💡 *Note:* Replace \`CHIRO_YOUR_KEY_HERE\` with your redeemed script key.`
-          )
-          .setFooter({ text: "Only visible to you" });
+      // 3. Reset HWID -> Dropdown Menu (BananaBot style!)
+      if (btnId === "btn_resethwid") {
+        await interaction.deferReply({ ephemeral: true });
+        const res = await fetchMyKeysApi(userId);
+        const keys = res?.data || [];
 
-        await interaction.reply({ embeds: [scriptEmbed], ephemeral: true });
+        if (keys.length === 0) {
+          await interaction.editReply({
+            content: isKm
+              ? "❌ <b>មិនមាន Key ណាមួយត្រូវបានរកឃើញសម្រាប់គណនីរបស់អ្នកទេ។</b>\nសូមចុច <b>🎟️ Redeem Code</b> ដើម្បីប្ដូរ voucher ជាមុនសិន!"
+              : "❌ **No redeemed keys found for your Discord account.**\nPlease tap **🎟️ Redeem Code** first to redeem a voucher!",
+          });
+          return;
+        }
+
+        const cooldown = getMemberCooldown(interaction.member);
+        const cooldownMs = cooldown.hours * 60 * 60 * 1000;
+
+        // Build Dropdown Options
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId("select_resethwid")
+          .setPlaceholder(`Select a key to reset HWID | Page (1/1) 1-${keys.length}`);
+
+        for (const k of keys.slice(0, 25)) {
+          const durationStr = k.expiresAt
+            ? `Expires: ${new Date(k.expiresAt).toLocaleDateString()}`
+            : "Lifetime";
+
+          let statusDesc = `(${durationStr}) | Ready to reset HWID`;
+          let emoji = "🖥️";
+
+          if (k.lastResetTimestamp && cooldownMs > 0) {
+            const elapsed = Date.now() - k.lastResetTimestamp;
+            if (elapsed < cooldownMs) {
+              const remainingMs = cooldownMs - elapsed;
+              const remHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+              const remDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+              const waitStr = remDays > 1 ? `${remDays}d` : `${remHours}h`;
+              statusDesc = `(${durationStr}) | Cooldown: ${waitStr} left`;
+              emoji = "⏳";
+            }
+          }
+
+          selectMenu.addOptions(
+            new StringSelectMenuOptionBuilder()
+              .setLabel(k.key)
+              .setDescription(statusDesc.substring(0, 100))
+              .setEmoji(emoji)
+              .setValue(k.key)
+          );
+        }
+
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+
+        await interaction.editReply({
+          content: isKm
+            ? `🖥️ **សូមជ្រើសរើស Key ដែលអ្នកចង់ Reset HWID:**\n🛡️ *កម្រិតសិទ្ធិ: ${cooldown.roleName}*`
+            : `🖥️ **Select a key to reset HWID from the dropdown below:**\n🛡️ *Your Cooldown Tier: ${cooldown.roleName}*`,
+          components: [row],
+        });
+        return;
+      }
+
+      // 4. Get Script / Keys -> Dropdown Menu (BananaBot style!)
+      if (btnId === "btn_script") {
+        await interaction.deferReply({ ephemeral: true });
+        const res = await fetchMyKeysApi(userId);
+        const keys = res?.data || [];
+
+        if (keys.length === 0) {
+          // Default loader if no key redeemed yet
+          const scriptEmbed = new EmbedBuilder()
+            .setColor(0x3b82f6)
+            .setTitle("📜 Roblox Execution Loader")
+            .setDescription(
+              "```lua\ngetgenv().Key = \"CHIRO_YOUR_KEY_HERE\"\nlocal Chiro = loadstring(game:HttpGet(\"https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau\"))()\n```\n" +
+                "💡 *Tip: Redeem a key first to get a 1-click personalized script!*"
+            );
+          await interaction.editReply({ embeds: [scriptEmbed] });
+          return;
+        }
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId("select_script")
+          .setPlaceholder(`Select a key to get Roblox script | Page (1/1) 1-${keys.length}`);
+
+        for (const k of keys.slice(0, 25)) {
+          const prodName = k.product?.name || "Chiro UI";
+          const durStr = k.expiresAt ? "Temporary Key" : "Lifetime VIP";
+          selectMenu.addOptions(
+            new StringSelectMenuOptionBuilder()
+              .setLabel(k.key)
+              .setDescription(`(${durStr}) | ${prodName}`)
+              .setEmoji("📜")
+              .setValue(k.key)
+          );
+        }
+
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+
+        await interaction.editReply({
+          content: isKm
+            ? "📜 **សូមជ្រើសរើស Key របស់អ្នកដើម្បីទទួលកូដ Roblox Loader:**"
+            : "📜 **Select your key from the dropdown to get your personalized script loader:**",
+          components: [row],
+        });
+        return;
+      }
+
+      // 5. My Keys Status -> Dropdown Menu (BananaBot style!)
+      if (btnId === "btn_verify") {
+        await interaction.deferReply({ ephemeral: true });
+        const res = await fetchMyKeysApi(userId);
+        const keys = res?.data || [];
+
+        if (keys.length === 0) {
+          await interaction.editReply({
+            content: isKm
+              ? "❌ **មិនមាន Key ណាមួយត្រូវបានរកឃើញសម្រាប់គណនីរបស់អ្នកទេ។**"
+              : "❌ **No keys found for your account.**\nTap **🎟️ Redeem Code** to redeem a voucher!",
+          });
+          return;
+        }
+
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId("select_status")
+          .setPlaceholder(`Select a key to view details & status | Page (1/1) 1-${keys.length}`);
+
+        for (const k of keys.slice(0, 25)) {
+          const prodName = k.product?.name || "Chiro UI";
+          const devCount = k._count?.devices ?? 0;
+          selectMenu.addOptions(
+            new StringSelectMenuOptionBuilder()
+              .setLabel(k.key)
+              .setDescription(`${prodName} | Status: ${k.status} | Devices: ${devCount}/${k.maxDevices}`)
+              .setEmoji("📊")
+              .setValue(k.key)
+          );
+        }
+
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+
+        await interaction.editReply({
+          content: isKm
+            ? "📊 **ជ្រើសរើស Key ពី Dropdown ដើម្បីពិនិត្យព័ត៌មានលម្អិត:**"
+            : "📊 **Select a key from the dropdown to inspect its full status & device slots:**",
+          components: [row],
+        });
         return;
       }
 
@@ -448,7 +527,6 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         return;
       }
 
-      // Language switcher inline buttons
       if (btnId === "lang_select_en" || btnId === "lang_select_km") {
         const chosen = btnId === "lang_select_en" ? "en" : "km";
         userLang.set(userId, chosen);
@@ -468,16 +546,16 @@ client.on("interactionCreate", async (interaction: Interaction) => {
             isKm
               ? `1️⃣ **ទិញ Key:** ទទួល voucher code (CHIRO-XXXX-XXXX-XXXX)\n` +
                   `2️⃣ **ប្ដូរ Key:** ចុចលើ \`🎟️ Redeem Code\` (ទទួលបាន role **@Premium** ភ្លាមៗ)\n` +
-                  `3️⃣ **Execute ក្នុង Roblox:** ប្រើ loader ក្នុង \`📜 Get Script / Keys\`\n` +
-                  `4️⃣ **Reset HWID:**\n` +
+                  `3️⃣ **Execute ក្នុង Roblox:** ជ្រើសរើស key ក្នុង \`📜 Get Script / Keys\`\n` +
+                  `4️⃣ **Reset HWID:** ជ្រើសរើស key ពី Dropdown \`🖥️ Reset HWID\`\n` +
                   `• 🌟 **Chiro Hub:** គ្មាន Cooldown\n` +
                   `• 👑 **Admin:** 1 ម៉ោង\n` +
                   `• 🚀 **Server Booster:** 1 ថ្ងៃ\n` +
                   `• 👤 **ទូទៅ:** 4 ថ្ងៃ`
               : `1️⃣ **Buy Key:** Purchase to receive a voucher (CHIRO-XXXX-XXXX-XXXX)\n` +
                   `2️⃣ **Redeem Key:** Click \`🎟️ Redeem Code\` (auto grants **@Premium** role)\n` +
-                  `3️⃣ **Execute in Roblox:** Use the loader from \`📜 Get Script / Keys\`\n` +
-                  `4️⃣ **Reset HWID Cooldowns:**\n` +
+                  `3️⃣ **Execute in Roblox:** Choose key from \`📜 Get Script / Keys\` dropdown\n` +
+                  `4️⃣ **Reset HWID:** Choose key from \`🖥️ Reset HWID\` dropdown\n` +
                   `• 🌟 **Chiro Hub:** No Cooldown\n` +
                   `• 👑 **Admin:** 1 Hour\n` +
                   `• 🚀 **Server Booster:** 1 Day\n` +
@@ -490,11 +568,122 @@ client.on("interactionCreate", async (interaction: Interaction) => {
       }
     }
 
-    // ── Modal Form Submissions ───────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. DROPDOWN (SELECT MENU) INTERACTIONS
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isStringSelectMenu()) {
+      const selectedKey = interaction.values[0];
+
+      // A. Dropdown: Reset HWID
+      if (interaction.customId === "select_resethwid") {
+        await interaction.deferReply({ ephemeral: true });
+        const cooldown = getMemberCooldown(interaction.member);
+        const res = await resetHwidApi(selectedKey, interaction.user.id, cooldown.hours);
+
+        if (res && res.success) {
+          const nextReset = res.data?.nextResetAvailable
+            ? (res.data.nextResetAvailable.startsWith("Immediately")
+                ? res.data.nextResetAvailable
+                : new Date(res.data.nextResetAvailable).toLocaleDateString(isKm ? "km-KH" : "en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }))
+            : "4 days from now";
+
+          const hwidEmbed = new EmbedBuilder()
+            .setColor(0x10b981)
+            .setTitle(isKm ? "✅ Reset HWID បានជោគជ័យ!" : "✅ HWID Reset Successful!")
+            .setDescription(
+              isKm
+                ? `Key \`${selectedKey}\` ត្រូវបានដោះចំណងពីឧបករណ៍ទាំងអស់។\n\n` +
+                    `🛡️ **កម្រិតសិទ្ធិ Cooldown:** ${cooldown.roleName}\n` +
+                    `📱 អ្នកអាចយកទៅ activate លើឧបករណ៍ថ្មីបានហើយ។\n` +
+                    `⏳ **Reset បន្ទាប់អាចធ្វើបាននៅ:** ${nextReset}`
+                : `Your key \`${selectedKey}\` has been unlinked from all previous devices.\n\n` +
+                    `🛡️ **Cooldown Tier:** ${cooldown.roleName}\n` +
+                    `📱 You can now execute and activate it on your new device.\n` +
+                    `⏳ **Next reset available:** ${nextReset}`
+            );
+
+          await interaction.editReply({ embeds: [hwidEmbed], components: [] });
+        } else {
+          const err = res?.error?.message || (isKm ? "ការ Reset HWID បរាជ័យ។" : "HWID Reset failed.");
+          await interaction.editReply({
+            content: `❌ **${isKm ? "Reset HWID បរាជ័យ" : "HWID Reset Failed"}**\n\n${err}\n\n💡 *Tier: ${cooldown.roleName}*`,
+            components: [],
+          });
+        }
+        return;
+      }
+
+      // B. Dropdown: Get Script
+      if (interaction.customId === "select_script") {
+        const scriptEmbed = new EmbedBuilder()
+          .setColor(0x3b82f6)
+          .setTitle("📜 Roblox Script Loader")
+          .setDescription(
+            `Execution script for key \`${selectedKey}\`:\n\n` +
+              `\`\`\`lua\n` +
+              `getgenv().Key = "${selectedKey}"\n` +
+              `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau"))()\n` +
+              `\`\`\`\n` +
+              `📋 *Tap the copy button on the code block above to copy directly into your executor!*`
+          )
+          .setFooter({ text: "Only visible to you" });
+
+        await interaction.reply({ embeds: [scriptEmbed], ephemeral: true });
+        return;
+      }
+
+      // C. Dropdown: My Keys Status
+      if (interaction.customId === "select_status") {
+        await interaction.deferReply({ ephemeral: true });
+        const res = await verifyKeyApi(selectedKey);
+
+        if (res && res.success && res.data) {
+          const d = res.data;
+          const status = d.status || "ACTIVE";
+          const prodName = d.product?.name || "Chiro UI";
+          const exp = d.license?.expiresAt
+            ? new Date(d.license.expiresAt).toLocaleDateString(isKm ? "km-KH" : "en-GB")
+            : isKm
+            ? "គ្មានកំណត់"
+            : "Lifetime VIP";
+          const devices = `${d.license?.currentDevices || 0}/${d.license?.maxDevices || 1}`;
+
+          const verifyEmbed = new EmbedBuilder()
+            .setColor(0x10b981)
+            .setTitle(isKm ? "✅ ព័ត៌មានលម្អិត License Key" : "✅ License Key Details")
+            .setDescription(
+              `🔑 **Key:** \`${selectedKey}\`\n\n` +
+                `📦 **${isKm ? "ផលិតផល" : "Product"}:** ${prodName}\n` +
+                `🟢 **${isKm ? "ស្ថានភាព" : "Status"}:** ${status}\n` +
+                `⏳ **${isKm ? "ផុតកំណត់" : "Expires"}:** ${exp}\n` +
+                `📱 **${isKm ? "ឧបករណ៍ចូលភ្ជាប់" : "Devices Bound"}:** ${devices}`
+            )
+            .setFooter({ text: "Only visible to you" });
+
+          await interaction.editReply({ embeds: [verifyEmbed], components: [] });
+        } else {
+          const err = res?.error?.message || (isKm ? "Key មិនត្រឹមត្រូវ។" : "Key not found or invalid.");
+          await interaction.editReply({
+            content: `❌ **${isKm ? "ពិនិត្យ Key បរាជ័យ" : "Verification Failed"}**\n\n${err}`,
+            components: [],
+          });
+        }
+        return;
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. MODAL SUBMISSIONS (Redeem Code)
+    // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isModalSubmit()) {
       await interaction.deferReply({ ephemeral: true });
 
-      // Modal: Redeem Code
       if (interaction.customId === "modal_redeem") {
         const code = interaction.fields.getTextInputValue("voucher_input").trim();
         const res = await redeemVoucherApi(code, interaction.user.id, interaction.user.tag);
@@ -517,7 +706,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
           }
 
           const successEmbed = new EmbedBuilder()
-            .setColor(0x10b981) // Green
+            .setColor(0x10b981)
             .setTitle(isKm ? "🎉 Voucher ត្រូវបានប្ដូរជោគជ័យ!" : "🎉 Voucher Redeemed Successfully!")
             .setDescription(
               (isKm
@@ -560,89 +749,11 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         }
         return;
       }
-
-      // Modal: Reset HWID (Role-based cooldown)
-      if (interaction.customId === "modal_resethwid") {
-        const key = interaction.fields.getTextInputValue("hwid_key_input").trim();
-        const cooldown = getMemberCooldown(interaction.member);
-        const res = await resetHwidApi(key, interaction.user.id, cooldown.hours);
-
-        if (res && res.success) {
-          const nextReset = res.data?.nextResetAvailable
-            ? (res.data.nextResetAvailable.startsWith("Immediately")
-                ? res.data.nextResetAvailable
-                : new Date(res.data.nextResetAvailable).toLocaleDateString(isKm ? "km-KH" : "en-GB", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }))
-            : (cooldown.hours === 0 ? "Immediately (No Cooldown)" : `${cooldown.hours} hours from now`);
-
-          const hwidEmbed = new EmbedBuilder()
-            .setColor(0x10b981)
-            .setTitle(isKm ? "✅ Reset HWID បានជោគជ័យ!" : "✅ HWID Reset Successful!")
-            .setDescription(
-              isKm
-                ? `Key \`${key}\` ត្រូវបានដោះចំណងពីឧបករណ៍ទាំងអស់។\n\n` +
-                    `🛡️ **កម្រិតសិទ្ធិ Cooldown:** ${cooldown.roleName}\n` +
-                    `📱 អ្នកអាចយកទៅ activate លើឧបករណ៍ថ្មីបានហើយ។\n` +
-                    `⏳ **Reset បន្ទាប់អាចធ្វើបាននៅ:** ${nextReset}`
-                : `Your key \`${key}\` has been unlinked from all previous devices.\n\n` +
-                    `🛡️ **Cooldown Tier:** ${cooldown.roleName}\n` +
-                    `📱 You can now execute and activate it on your new device.\n` +
-                    `⏳ **Next reset available:** ${nextReset}`
-            );
-
-          await interaction.editReply({ embeds: [hwidEmbed] });
-        } else {
-          const err = res?.error?.message || (isKm ? "ការ Reset HWID បរាជ័យ។" : "HWID Reset failed.");
-          await interaction.editReply({
-            content: `❌ **${isKm ? "Reset HWID បរាជ័យ" : "HWID Reset Failed"}**\n\n${err}\n\n💡 *Your Tier: ${cooldown.roleName}*`,
-          });
-        }
-        return;
-      }
-
-      // Modal: Verify Key
-      if (interaction.customId === "modal_verify") {
-        const key = interaction.fields.getTextInputValue("verify_key_input").trim();
-        const res = await verifyKeyApi(key);
-
-        if (res && res.success && res.data) {
-          const d = res.data;
-          const status = d.status || "ACTIVE";
-          const prodName = d.product?.name || "Chiro UI";
-          const exp = d.license?.expiresAt
-            ? new Date(d.license.expiresAt).toLocaleDateString(isKm ? "km-KH" : "en-GB")
-            : isKm
-            ? "គ្មានកំណត់"
-            : "Lifetime VIP";
-          const devices = `${d.license?.currentDevices || 0}/${d.license?.maxDevices || 1}`;
-
-          const verifyEmbed = new EmbedBuilder()
-            .setColor(0x10b981)
-            .setTitle(isKm ? "✅ LICENSE ត្រឹមត្រូវ" : "✅ LICENSE VALID")
-            .setDescription(
-              `📦 **${isKm ? "ផលិតផល" : "Product"}:** ${prodName}\n` +
-                `🟢 **${isKm ? "ស្ថានភាព" : "Status"}:** ${status}\n` +
-                `⏳ **${isKm ? "ផុតកំណត់" : "Expires"}:** ${exp}\n` +
-                `📱 **${isKm ? "ឧបករណ៍ចូលភ្ជាប់" : "Devices Bound"}:** ${devices}`
-            );
-
-          await interaction.editReply({ embeds: [verifyEmbed] });
-        } else {
-          const err = res?.error?.message || (isKm ? "Key មិនត្រឹមត្រូវ។" : "Key not found or invalid.");
-          await interaction.editReply({
-            content: `❌ **${isKm ? "ពិនិត្យ Key បរាជ័យ" : "Verification Failed"}**\n\n${err}`,
-          });
-        }
-        return;
-      }
     }
 
-    // ── Slash Commands ───────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // 4. SLASH COMMANDS (/panel)
+    // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === "panel") {
         const panel = buildMemberPanel(lang);
@@ -686,6 +797,7 @@ client.once("ready", async () => {
   👤 Bot Tag: ${botTag}
   🔗 API Base: ${API_BASE}
   📋 Member Panel: Run /panel to spawn menu
+  📱 Dropdowns: Reset HWID, Get Script, My Keys Status
   👑 Auto-Role: Assigns @Premium on voucher redeem
   ⏳ Cooldowns: Chiro Hub (0h) | Admin (1h) | Booster (24h) | Default (96h)
   ========================================================
