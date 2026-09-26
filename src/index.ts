@@ -14,7 +14,7 @@ import {
   REST,
   Routes,
   Interaction,
-  Message,
+  GuildMember,
 } from "discord.js";
 
 dotenv.config();
@@ -72,14 +72,87 @@ healthServer.listen(PORT, () => {
   }, 14 * 60 * 1000);
 });
 
-// ── Discord Client Setup ──────────────────────────────────────────────────────
-// Using GatewayIntentBits.Guilds only so the bot connects without needing privileged intents
+// ── Discord Client Setup (Using GatewayIntentBits.Guilds only) ─────────────────
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-  ],
+  intents: [GatewayIntentBits.Guilds],
 });
 
+// ── Role-based HWID Reset Cooldown Calculator ─────────────────────────────────
+interface CooldownInfo {
+  hours: number;
+  roleName: string;
+}
+
+function getMemberCooldown(member: any): CooldownInfo {
+  if (!member) {
+    return { hours: 96, roleName: "👤 Default Member (4 Days)" };
+  }
+
+  const roleList = member.roles?.cache ? Array.from(member.roles.cache.values()) : [];
+  const roleNames = roleList.map((r: any) => (r.name || "").toLowerCase());
+
+  // 1. Chiro Hub (Role named "Chiro Hub", "ChiroHub", or "VIP"): No Cooldown (0 Hours)
+  const isChiroHub = roleNames.some(
+    (n: string) => n.includes("chiro hub") || n.includes("chirohub") || n === "vip"
+  );
+  if (isChiroHub) {
+    return { hours: 0, roleName: "🌟 Chiro Hub (No Cooldown)" };
+  }
+
+  // 2. Admin (Administrator permission or role containing "admin"): 1 Hour
+  const isAdmin =
+    member.permissions?.has("Administrator") ||
+    roleNames.some((n: string) => n.includes("admin"));
+  if (isAdmin) {
+    return { hours: 1, roleName: "👑 Admin (1 Hour Cooldown)" };
+  }
+
+  // 3. Server Booster (Boosting or role containing "booster"): 1 Day (24 Hours)
+  const isBooster =
+    Boolean(member.premiumSince) ||
+    roleNames.some((n: string) => n.includes("booster") || n.includes("nitro booster"));
+  if (isBooster) {
+    return { hours: 24, roleName: "🚀 Server Booster (1 Day Cooldown)" };
+  }
+
+  // 4. Default Member: 4 Days (96 Hours)
+  return { hours: 96, roleName: "👤 Default Member (4 Days Cooldown)" };
+}
+
+// ── Auto-Grant Premium Role on Key Redeem ──────────────────────────────────────
+async function grantPremiumRole(guild: any, member: any): Promise<string | null> {
+  if (!guild || !member) return null;
+  try {
+    // Look for role named "Premium", "Buyer", or "Customer"
+    let role = guild.roles.cache.find(
+      (r: any) =>
+        r.name.toLowerCase() === "premium" ||
+        r.name.toLowerCase() === "buyer" ||
+        r.name.toLowerCase() === "customer"
+    );
+
+    // If not found, try to auto-create "Premium" role
+    if (!role) {
+      try {
+        role = await guild.roles.create({
+          name: "Premium",
+          color: 0x06b6d4, // Cyan
+          reason: "Auto-created for Chiro UI Key Buyers",
+        });
+      } catch (createErr) {
+        console.warn("Could not auto-create Premium role:", createErr);
+      }
+    }
+
+    if (role && member.roles && "add" in member.roles) {
+      await member.roles.add(role);
+      return role.name;
+    }
+  } catch (err: any) {
+    console.warn("Could not grant Premium role:", err.message);
+  }
+  return null;
+}
 
 // ── API Helper Functions ──────────────────────────────────────────────────────
 async function redeemVoucherApi(code: string, discordId?: string, discordTag?: string) {
@@ -89,8 +162,8 @@ async function redeemVoucherApi(code: string, discordId?: string, discordTag?: s
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         code,
-        telegramId: discordId,
-        telegramUsername: discordTag,
+        discordId,
+        discordTag,
       }),
     });
     return (await res.json()) as any;
@@ -112,12 +185,12 @@ async function verifyKeyApi(key: string) {
   }
 }
 
-async function resetHwidApi(key: string) {
+async function resetHwidApi(key: string, discordId?: string, cooldownHours?: number) {
   try {
     const res = await fetch(`${API_BASE}/reset-hwid`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, discordId, cooldownHours }),
     });
     return (await res.json()) as any;
   } catch (err: any) {
@@ -125,7 +198,7 @@ async function resetHwidApi(key: string) {
   }
 }
 
-// ── Member Panel Generator (Like Banana Hub in user image) ─────────────────────
+// ── Member Panel Generator (Banana Hub Style) ─────────────────────────────────
 function buildMemberPanel(lang: "en" | "km" = "en") {
   const isKm = lang === "km";
 
@@ -135,19 +208,29 @@ function buildMemberPanel(lang: "en" | "km" = "en") {
     .setDescription(
       isKm
         ? `សូមស្វាគមន៍មកកាន់ **Chiro UI**!\n\nឧបករណ៍សម្រាប់សមាជិក។ ចុចលើប៊ូតុងខាងក្រោមដើម្បីប្រើប្រាស់:\n\n` +
-            `🎟️ **Redeem Code** — ប្ដូរ voucher code ទៅជា whitelist script key\n` +
+            `🎟️ **Redeem Code** — ប្ដូរ voucher យក whitelist key (ទទួលបាន role **@Premium** ស្វ័យប្រវត្តិ)\n` +
             `🆓 **Free 24h Key** — ទទួល link យក key ឥតគិតថ្លៃ 24 ម៉ោង\n` +
-            `🖥️ **Reset HWID** — ដោះចំណងឧបករណ៍សម្រាប់ key របស់អ្នក *(4 ថ្ងៃម្ដង)*\n` +
+            `🖥️ **Reset HWID** — ដោះចំណងឧបករណ៍សម្រាប់ key របស់អ្នក\n` +
             `📜 **Get Script / Keys** — ទទួល code loader សម្រាប់ run ក្នុង Roblox\n` +
             `📊 **My Keys Status** — ពិនិត្យស្ថានភាព key និងចំនួនឧបករណ៍\n` +
-            `🌐 **Language / ភាសា** — ប្ដូរភាសារវាង English និង ខ្មែរ`
+            `🌐 **Language / ភាសា** — ប្ដូរភាសារវាង English និង ខ្មែរ\n\n` +
+            `⏳ **កម្រិតកំណត់ Reset HWID Cooldown:**\n` +
+            `• 🌟 **Chiro Hub:** គ្មាន Cooldown (Reset បានរហ័សគ្រប់ពេល)\n` +
+            `• 👑 **Admin:** Cooldown 1 ម៉ោង\n` +
+            `• 🚀 **Server Booster:** Cooldown 1 ថ្ងៃ\n` +
+            `• 👤 **សមាជិកទូទៅ:** Cooldown 4 ថ្ងៃ`
         : `Welcome to **Chiro UI**!\n\nTools for members. Click the corresponding button to use it.\n\n` +
-            `🎟️ **Redeem Code** — redeem a code to get a whitelist key\n` +
-            `🆓 **Free 24h Key** — get a free 24-hour temporary key\n` +
-            `🖥️ **Reset HWID** — reset HWID for your key *(4-day cooldown)*\n` +
+            `🎟️ **Redeem Code** — redeem voucher code (automatically grants **@Premium** role)\n` +
+            `🆓 **Free 24h Key** — get a free 24-hour key checkpoint link\n` +
+            `🖥️ **Reset HWID** — reset HWID for your key\n` +
             `📜 **Get Script / Keys** — get Roblox script loader and execution key\n` +
             `📊 **My Keys Status** — view your key status & bound devices\n` +
-            `🌐 **Language / ភាសា** — switch language to Khmer or English`
+            `🌐 **Language / ភាសា** — switch language to Khmer or English\n\n` +
+            `⏳ **HWID Reset Cooldown Tiers:**\n` +
+            `• 🌟 **Chiro Hub:** No Cooldown (Instant Unlimited)\n` +
+            `• 👑 **Admin:** 1 Hour Cooldown\n` +
+            `• 🚀 **Server Booster:** 1 Day Cooldown\n` +
+            `• 👤 **Default Member:** 4 Days Cooldown`
     )
     .setFooter({ text: "Chiro UI • Member Panel • High Security Licensing" })
     .setTimestamp();
@@ -218,11 +301,11 @@ function createRedeemModal(lang: "en" | "km") {
   return modal;
 }
 
-function createResetHwidModal(lang: "en" | "km") {
+function createResetHwidModal(lang: "en" | "km", cooldownTierName: string) {
   const isKm = lang === "km";
   const modal = new ModalBuilder()
     .setCustomId("modal_resethwid")
-    .setTitle(isKm ? "Reset HWID ឧបករណ៍" : "Reset HWID");
+    .setTitle(isKm ? `Reset HWID (${cooldownTierName})` : `Reset HWID (${cooldownTierName})`);
 
   const input = new TextInputBuilder()
     .setCustomId("hwid_key_input")
@@ -273,9 +356,10 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         return;
       }
 
-      // 2. Reset HWID Button -> Show Modal
+      // 2. Reset HWID Button -> Show Modal with user's cooldown tier
       if (btnId === "btn_resethwid") {
-        await interaction.showModal(createResetHwidModal(lang));
+        const cooldown = getMemberCooldown(interaction.member);
+        await interaction.showModal(createResetHwidModal(lang, cooldown.roleName));
         return;
       }
 
@@ -383,13 +467,21 @@ client.on("interactionCreate", async (interaction: Interaction) => {
           .setDescription(
             isKm
               ? `1️⃣ **ទិញ Key:** ទទួល voucher code (CHIRO-XXXX-XXXX-XXXX)\n` +
-                  `2️⃣ **ប្ដូរ Key:** ចុចលើ \`🎟️ Redeem Code\` រួចបញ្ចូល code\n` +
+                  `2️⃣ **ប្ដូរ Key:** ចុចលើ \`🎟️ Redeem Code\` (ទទួលបាន role **@Premium** ភ្លាមៗ)\n` +
                   `3️⃣ **Execute ក្នុង Roblox:** ប្រើ loader ក្នុង \`📜 Get Script / Keys\`\n` +
-                  `4️⃣ **ប្ដូរទូរស័ព្ទ / PC:** ចុចលើ \`🖥️ Reset HWID\` (4 ថ្ងៃម្ដង)`
+                  `4️⃣ **Reset HWID:**\n` +
+                  `• 🌟 **Chiro Hub:** គ្មាន Cooldown\n` +
+                  `• 👑 **Admin:** 1 ម៉ោង\n` +
+                  `• 🚀 **Server Booster:** 1 ថ្ងៃ\n` +
+                  `• 👤 **ទូទៅ:** 4 ថ្ងៃ`
               : `1️⃣ **Buy Key:** Purchase to receive a voucher (CHIRO-XXXX-XXXX-XXXX)\n` +
-                  `2️⃣ **Redeem Key:** Click \`🎟️ Redeem Code\` and submit code\n` +
+                  `2️⃣ **Redeem Key:** Click \`🎟️ Redeem Code\` (auto grants **@Premium** role)\n` +
                   `3️⃣ **Execute in Roblox:** Use the loader from \`📜 Get Script / Keys\`\n` +
-                  `4️⃣ **Change Device:** Click \`🖥️ Reset HWID\` (4-day cooldown)`
+                  `4️⃣ **Reset HWID Cooldowns:**\n` +
+                  `• 🌟 **Chiro Hub:** No Cooldown\n` +
+                  `• 👑 **Admin:** 1 Hour\n` +
+                  `• 🚀 **Server Booster:** 1 Day\n` +
+                  `• 👤 **Default Member:** 4 Days`
           )
           .setFooter({ text: "Only visible to you" });
 
@@ -413,11 +505,22 @@ client.on("interactionCreate", async (interaction: Interaction) => {
             ? `${data.durationDays} ${isKm ? "ថ្ងៃ" : "Days"}`
             : "Lifetime VIP";
 
+          // Auto-grant Premium role to buyer upon successful redeem
+          let roleGrantedText = "";
+          if (interaction.guild && interaction.member) {
+            const roleName = await grantPremiumRole(interaction.guild, interaction.member);
+            if (roleName) {
+              roleGrantedText = isKm
+                ? `\n\n👑 **តួនាទីទទួលបាន:** អ្នកទទួលបានតួនាទី **@${roleName}**!`
+                : `\n\n👑 **Role Granted:** You have been assigned the **@${roleName}** role!`;
+            }
+          }
+
           const successEmbed = new EmbedBuilder()
             .setColor(0x10b981) // Green
             .setTitle(isKm ? "🎉 Voucher ត្រូវបានប្ដូរជោគជ័យ!" : "🎉 Voucher Redeemed Successfully!")
             .setDescription(
-              isKm
+              (isKm
                 ? `📦 **ផលិតផល:** ${data.product?.name || "Chiro UI"}\n` +
                     `⏳ **រយៈពេល:** ${dur}\n` +
                     `📱 **ចំនួនឧបករណ៍:** ${data.maxDevices || 1}\n\n` +
@@ -439,7 +542,8 @@ client.on("interactionCreate", async (interaction: Interaction) => {
                     `getgenv().Key = "${data.key}"\n` +
                     `local Chiro = loadstring(game:HttpGet("https://raw.githubusercontent.com/leviiexesc/chiro_UI/main/chiro_lib.luau"))()\n` +
                     `\`\`\`\n` +
-                    `⚠️ *Important:* Save your key! Your original purchase voucher code is now consumed.`
+                    `⚠️ *Important:* Save your key! Your original purchase voucher code is now consumed.`) +
+                roleGrantedText
             )
             .setFooter({ text: "Keep your key private • Only visible to you" });
 
@@ -457,19 +561,24 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         return;
       }
 
-      // Modal: Reset HWID
+      // Modal: Reset HWID (Role-based cooldown)
       if (interaction.customId === "modal_resethwid") {
         const key = interaction.fields.getTextInputValue("hwid_key_input").trim();
-        const res = await resetHwidApi(key);
+        const cooldown = getMemberCooldown(interaction.member);
+        const res = await resetHwidApi(key, interaction.user.id, cooldown.hours);
 
         if (res && res.success) {
           const nextReset = res.data?.nextResetAvailable
-            ? new Date(res.data.nextResetAvailable).toLocaleDateString(isKm ? "km-KH" : "en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })
-            : "4 days from now";
+            ? (res.data.nextResetAvailable.startsWith("Immediately")
+                ? res.data.nextResetAvailable
+                : new Date(res.data.nextResetAvailable).toLocaleDateString(isKm ? "km-KH" : "en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }))
+            : (cooldown.hours === 0 ? "Immediately (No Cooldown)" : `${cooldown.hours} hours from now`);
 
           const hwidEmbed = new EmbedBuilder()
             .setColor(0x10b981)
@@ -477,9 +586,11 @@ client.on("interactionCreate", async (interaction: Interaction) => {
             .setDescription(
               isKm
                 ? `Key \`${key}\` ត្រូវបានដោះចំណងពីឧបករណ៍ទាំងអស់។\n\n` +
+                    `🛡️ **កម្រិតសិទ្ធិ Cooldown:** ${cooldown.roleName}\n` +
                     `📱 អ្នកអាចយកទៅ activate លើឧបករណ៍ថ្មីបានហើយ។\n` +
                     `⏳ **Reset បន្ទាប់អាចធ្វើបាននៅ:** ${nextReset}`
                 : `Your key \`${key}\` has been unlinked from all previous devices.\n\n` +
+                    `🛡️ **Cooldown Tier:** ${cooldown.roleName}\n` +
                     `📱 You can now execute and activate it on your new device.\n` +
                     `⏳ **Next reset available:** ${nextReset}`
             );
@@ -488,7 +599,7 @@ client.on("interactionCreate", async (interaction: Interaction) => {
         } else {
           const err = res?.error?.message || (isKm ? "ការ Reset HWID បរាជ័យ។" : "HWID Reset failed.");
           await interaction.editReply({
-            content: `❌ **${isKm ? "Reset HWID បរាជ័យ" : "HWID Reset Failed"}**\n\n${err}`,
+            content: `❌ **${isKm ? "Reset HWID បរាជ័យ" : "HWID Reset Failed"}**\n\n${err}\n\n💡 *Your Tier: ${cooldown.roleName}*`,
           });
         }
         return;
@@ -544,7 +655,6 @@ client.on("interactionCreate", async (interaction: Interaction) => {
   }
 });
 
-
 // ── Register Slash Commands ───────────────────────────────────────────────────
 async function registerSlashCommands() {
   if (!DISCORD_BOT_TOKEN || !CLIENT_ID) return;
@@ -575,7 +685,9 @@ client.once("ready", async () => {
   ⚡ CHIRO DISCORD LICENSE BOT READY
   👤 Bot Tag: ${botTag}
   🔗 API Base: ${API_BASE}
-  📋 Member Panel: Run !panel or /panel to spawn menu
+  📋 Member Panel: Run /panel to spawn menu
+  👑 Auto-Role: Assigns @Premium on voucher redeem
+  ⏳ Cooldowns: Chiro Hub (0h) | Admin (1h) | Booster (24h) | Default (96h)
   ========================================================
   `);
 
