@@ -73,13 +73,13 @@ healthServer.listen(PORT, () => {
 });
 
 // ── Discord Client Setup ──────────────────────────────────────────────────────
+// Using GatewayIntentBits.Guilds only so the bot connects without needing privileged intents
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
   ],
 });
+
 
 // ── API Helper Functions ──────────────────────────────────────────────────────
 async function redeemVoucherApi(code: string, discordId?: string, discordTag?: string) {
@@ -544,24 +544,6 @@ client.on("interactionCreate", async (interaction: Interaction) => {
   }
 });
 
-// ── Text Command Support (!panel) ─────────────────────────────────────────────
-client.on("messageCreate", async (message: Message) => {
-  if (message.author.bot) return;
-
-  const content = message.content.trim().toLowerCase();
-  if (content === "!panel" || content === "/panel") {
-    // Only administrators or users with ManageGuild can send the panel
-    if (message.member?.permissions.has("ManageGuild") || message.member?.permissions.has("Administrator")) {
-      const panel = buildMemberPanel("en");
-      if ("send" in message.channel) {
-        await message.channel.send(panel);
-      }
-    } else {
-      await message.reply("⚠️ You need `Manage Server` permission to post the Member Panel.");
-    }
-  }
-
-});
 
 // ── Register Slash Commands ───────────────────────────────────────────────────
 async function registerSlashCommands() {
